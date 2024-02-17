@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sqlparser::dialect::GenericDialect;
 use sqlparser::parser::Parser;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs::{self, File};
 use std::io::{self, BufReader, BufWriter, Write};
 use std::path::Path;
@@ -47,11 +47,10 @@ fn extract_column_names(sql: &str) -> Vec<String> {
                                                 column_names.push(ident.value.clone());
                                             }
                                         },
-                                        SelectItem::ExprWithAlias { expr: _, alias } => {
-                                            // Corrected to ignore the unused variable
+                                        SelectItem::ExprWithAlias { alias, .. } => {
                                             column_names.push(alias.value.clone());
                                         },
-                                        _ => {} // Ignore other types of SelectItems for simplicity
+                                        _ => {}
                                     }
                                 }
                             }
@@ -92,17 +91,22 @@ fn main() -> io::Result<()> {
                 writeln!(writer, "  - name: {}", model.name).expect("Failed to write model name");
                 writeln!(writer, "    columns:").expect("Failed to write columns");
 
-                for column in model.columns.values() {
-                    writeln!(
-                        writer,
-                        "      - name: {}\n        tests:\n          - not_null\n          - unique\n        tags: {:?}",
-                        column.name, column.tags
-                    ).expect("Failed to write column schema");
+                let mut written_columns = HashSet::new();
+                
+                for (column_name, column) in &model.columns {
+                    if written_columns.insert(column_name.clone()) {
+                        writeln!(
+                            writer,
+                            "      - name: {}\n        tests:\n          - not_null\n          - unique\n        tags: {:?}",
+                            column_name, column.tags
+                        ).expect("Failed to write column schema");
+                    }
                 }
 
-                // Write additional columns extracted from compiled SQL
                 for column_name in column_names {
-                    writeln!(writer, "      - name: {}", column_name).expect("Failed to write additional column schema");
+                    if written_columns.insert(column_name.clone()) {
+                        writeln!(writer, "      - name: {}", column_name).expect("Failed to write additional column schema");
+                    }
                 }
 
                 writer.flush().expect("Failed to flush writer");
