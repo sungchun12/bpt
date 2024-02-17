@@ -8,3 +8,13 @@ models:
           - not_null
           - unique
         tags: ["primary-key"]
+      - name: org_id
+      - name: org_name
+      - name: employee_range
+      - name: created_at
+      - name: org_id
+      - name: num_users
+      - name: org_id
+      - name: sub_created_at
+      - name: sub_plan
+      - name: sub_price

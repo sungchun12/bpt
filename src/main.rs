@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::{self, BufReader, BufWriter, Write};
 use std::path::Path;
+use sqlparser::ast::{Expr, SelectItem, SetExpr, Statement};
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Column {
@@ -28,6 +29,43 @@ struct Manifest {
     nodes: HashMap<String, Value>,
 }
 
+fn extract_column_names(sql: &str) -> Vec<String> {
+    let dialect = GenericDialect {};
+    let mut column_names = Vec::new();
+
+    match Parser::parse_sql(&dialect, sql) {
+        Ok(parsed_sql) => {
+            for statement in parsed_sql {
+                if let Statement::Query(query) = statement {
+                    if let Some(with) = &query.with {
+                        for cte in &with.cte_tables {
+                            if let SetExpr::Select(select) = &*cte.query.body {
+                                for item in &select.projection {
+                                    match item {
+                                        SelectItem::UnnamedExpr(expr) => {
+                                            if let Expr::Identifier(ident) = expr {
+                                                column_names.push(ident.value.clone());
+                                            }
+                                        },
+                                        SelectItem::ExprWithAlias { expr: _, alias } => {
+                                            // Corrected to ignore the unused variable
+                                            column_names.push(alias.value.clone());
+                                        },
+                                        _ => {} // Ignore other types of SelectItems for simplicity
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Err(e) => eprintln!("Failed to parse SQL: {}", e),
+    }
+
+    column_names
+}
+
 fn main() -> io::Result<()> {
     let file_path = "./test_artifacts/manifest.json";
     let file = File::open(file_path)?;
@@ -35,12 +73,11 @@ fn main() -> io::Result<()> {
     let manifest: Manifest = serde_json::from_reader(reader).unwrap();
 
     let model_prefix = Regex::new(r"^model\.").unwrap();
-    let dialect = GenericDialect {};
 
     manifest.nodes.par_iter().for_each(|(key, value)| {
         if model_prefix.is_match(key) {
             if let Ok(model) = serde_json::from_value::<Model>(value.clone()) {
-                let parsed_sql = Parser::parse_sql(&dialect, &model.compiled_code).expect("Failed to parse SQL");
+                let column_names = extract_column_names(&model.compiled_code);
                 let schema_file_path = format!("{}_schema.yml", model.name);
                 let schema_path = Path::new(&schema_file_path);
 
@@ -63,9 +100,9 @@ fn main() -> io::Result<()> {
                     ).expect("Failed to write column schema");
                 }
 
-                // Placeholder for detailed SQL AST processing
-                for _stmt in parsed_sql {
-                    // Implement detailed AST processing here if needed
+                // Write additional columns extracted from compiled SQL
+                for column_name in column_names {
+                    writeln!(writer, "      - name: {}", column_name).expect("Failed to write additional column schema");
                 }
 
                 writer.flush().expect("Failed to flush writer");
