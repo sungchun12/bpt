@@ -1,0 +1,10 @@
+version: 2
+
+models:
+  - name: dim_orgs
+    columns:
+      - name: org_id
+        tests:
+          - not_null
+          - unique
+        tags: ["primary-key"]
