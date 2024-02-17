@@ -1,8 +1,9 @@
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs::File;
-use std::io::prelude::*;
-use std::io::Write;
+use std::io::{self, BufReader, BufWriter, Write};
+use std::sync::Mutex;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Column {
@@ -22,30 +23,40 @@ struct Manifest {
     nodes: HashMap<String, Model>,
 }
 
-fn main() -> std::io::Result<()> {
-    let mut file = File::open("test_artifacts/manifest.json")?;
-    let mut contents = String::new();
-    file.read_to_string(&mut contents)?;
+fn main() -> io::Result<()> {
+    let file = File::open("test_artifacts/manifest.json")?;
+    let reader = BufReader::new(file);
+    let manifest: Manifest = serde_json::from_reader(reader)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
-    let manifest: Manifest = serde_json::from_str(&contents).unwrap();
+    let schema_path = File::create("schema.yml")?;
+    let writer = BufWriter::new(schema_path);
+    let writer_mutex = Mutex::new(writer);
 
-    let mut out_file = File::create("schema.yml")?;
-    write!(out_file, "version: 2\n\nmodels:\n").unwrap();
+    writeln!(writer_mutex.lock().unwrap(), "version: 2\n\nmodels:")?;
 
-    for (_key, model) in manifest.nodes.iter() {
-        write!(out_file, "  - name: {}\n    columns:\n", model.name).unwrap();
-        for (name, column) in model.columns.iter() {
-            write!(
-                out_file,
-                "      - name: {}\n        tests:\n           - not_null\n           - unique\n",
-                name
-            )
-            .unwrap();
-            if !column.tags.is_empty() {
-                write!(out_file, "        tags: {:?}", column.tags).unwrap();
-            }
-        }
-    }
+    manifest.nodes.par_iter().for_each(|(_, model)| {
+        let mut model_schema = format!("  - name: {}\n    columns:\n", model.name);
+
+        model.columns.iter().for_each(|(name, column)| {
+            let column_schema = format!(
+                "      - name: {}\n        tests:\n           - not_null\n           - unique\n{}",
+                name,
+                if column.tags.is_empty() {
+                    String::new()
+                } else {
+                    format!("        tags: {:?}\n", column.tags)
+                }
+            );
+            model_schema.push_str(&column_schema);
+        });
+
+        let mut writer = writer_mutex.lock().unwrap();
+        writeln!(writer, "{}", model_schema).expect("Failed to write model schema");
+    });
+
+    // Ensure all data is flushed before ending the program
+    writer_mutex.lock().unwrap().flush()?;
 
     Ok(())
 }
