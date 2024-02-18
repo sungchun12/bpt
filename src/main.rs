@@ -2,13 +2,10 @@ use rayon::prelude::*;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value; // Add missing import statement
-use sqlparser::ast::{Expr, Select, SelectItem, SetExpr, Statement};
-use sqlparser::dialect::GenericDialect;
-use sqlparser::parser::Parser;
-use std::collections::{HashMap, HashSet};
-use std::fs::{self, File};
-use std::io::{self, BufReader, BufWriter, Write};
-use std::path::Path;
+
+use std::collections::HashMap;
+use std::fs::File;
+use std::io::{self, BufReader};
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Column {
@@ -65,8 +62,12 @@ fn main() -> io::Result<()> {
                     columns: column_names,
                     compiled_code: model.compiled_code,
                 };
-                println!("Model: {:?}", model_info.name);
-                println!("column_names: {:?}", model.columns.column_names);
+                println!("Model: {}", model_info.name);
+                for column in &model_info.columns.column_names {
+                    println!("column_name: {}", column);
+                }
+            } else if let Err(e) = serde_json::from_value::<Model>(value.clone()) {
+                println!("Failed to deserialize value into Model, error: {:?}", e);
             }
         }
     });
