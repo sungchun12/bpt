@@ -1,24 +1,26 @@
-use clap::{App, Arg};
-use duckdb::{Connection, Result as DuckResult};
 use rayon::prelude::*;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::HashMap;
+use sqlparser::dialect::GenericDialect;
+use sqlparser::parser::Parser;
+use std::collections::{HashMap, HashSet};
 use std::fs::{self, File};
-use std::io::{BufReader, Write};
+use std::io::{self, BufReader, BufWriter, Write};
+use std::path::Path;
+use sqlparser::ast::{Expr, Select, SelectItem, SetExpr, Statement};
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Column {
     name: String,
-    data_type: String,
-    description: Option<String>,
+    #[serde(default)]
+    tags: Vec<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Model {
-    database: String,
-    schema: String,
     name: String,
+    columns: HashMap<String, Column>,
     compiled_code: String,
 }
 
@@ -27,60 +29,95 @@ struct Manifest {
     nodes: HashMap<String, Value>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-struct Schema {
-    nodes: HashMap<String, Column>,
+fn extract_column_names(sql: &str) -> Vec<String> {
+    let dialect = GenericDialect {};
+    let mut column_names = HashSet::new();
+
+    match Parser::parse_sql(&dialect, sql) {
+        Ok(parsed_sql) => {
+            for statement in parsed_sql {
+                match statement {
+                    Statement::Query(query) => {
+                        let set_expr = &query.body;
+                        match &**set_expr {
+                            SetExpr::Select(select) => extract_names_from_select(&select, &mut column_names),
+                            _ => {}
+                        }
+                    },
+                    _ => {}
+                }
+            }
+        }
+        Err(e) => eprintln!("Failed to parse SQL: {}", e),
+    }
+
+    column_names.into_iter().collect()
 }
 
-fn main() -> DuckResult<()> {
-    let matches = App::new("DBT Schema Extractor")
-        .version("1.0")
-        .author("Your Name")
-        .about("Extracts schema information from DBT models for DuckDB")
-        .arg(
-            Arg::new("manifest")
-                .about("Sets the input file to use")
-                .value_name("FILE")
-                .takes_value(true)
-                .required(true),
-        )
-        .get_matches();
+// Helper function to extract column names from a Select statement
+fn extract_names_from_select(select: &Select, column_names: &mut HashSet<String>) {
+    for item in &select.projection {
+        match item {
+            SelectItem::UnnamedExpr(expr) => {
+                if let Expr::Identifier(ident) = expr {
+                    column_names.insert(ident.value.clone());
+                }
+            },
+            SelectItem::ExprWithAlias { alias, .. } => {
+                column_names.insert(alias.value.clone());
+            },
+            _ => {}
+        }
+    }
+}
 
-    let manifest_path = matches.value_of("manifest").unwrap();
-    let file = File::open(manifest_path)?;
+fn main() -> io::Result<()> {
+    let file_path = "./test_artifacts/manifest.json";
+    let file = File::open(file_path)?;
     let reader = BufReader::new(file);
-    let manifest: Manifest = serde_json::from_reader(reader)?;
+    let manifest: Manifest = serde_json::from_reader(reader).unwrap();
+
+    let model_prefix = Regex::new(r"^model\.").unwrap();
 
     manifest.nodes.par_iter().for_each(|(key, value)| {
-        if key.starts_with("model.") {
+        if model_prefix.is_match(key) {
             if let Ok(model) = serde_json::from_value::<Model>(value.clone()) {
-                let connection_string = format!("{}::memory:", model.database);
-                let conn = Connection::open(&connection_string).expect("Failed to connect to DuckDB");
+                let column_names = extract_column_names(&model.compiled_code);
+                let schema_file_path = format!("{}_schema.yml", model.name);
+                let schema_path = Path::new(&schema_file_path);
 
-                let query = format!(
-                    "SELECT column_name, data_type, character_maximum_length, numeric_precision, numeric_scale FROM information_schema.columns WHERE table_name = '{}' AND table_schema = '{}' ORDER BY ordinal_position",
-                    model.name, model.schema
-                );
-
-                let mut stmt = conn.prepare(&query).expect("Failed to prepare query");
-                let rows = stmt.query([]).expect("Failed to execute query");
-
-                let mut columns: Vec<Column> = vec![];
-                for row in rows {
-                    let column = Column {
-                        name: row.get("column_name").unwrap(),
-                        data_type: row.get("data_type").unwrap(),
-                        character_maximum_length: row.get("character_maximum_length").ok().flatten(),
-                        numeric_precision: row.get("numeric_precision").ok().flatten(),
-                        numeric_scale: row.get("numeric_scale").ok().flatten(),
-                    };
-                    columns.push(column);
+                if let Some(parent) = schema_path.parent() {
+                    fs::create_dir_all(parent).expect("Failed to create directories for schema file");
                 }
 
-                let schema = serde_yaml::to_string(&columns).expect("Failed to serialize schema to YAML");
-                let schema_file_path = format!("schemas/{}_schema.yml", model.name);
-                let mut schema_file = File::create(&schema_file_path).expect("Failed to create schema file");
-                schema_file.write_all(schema.as_bytes()).expect("Failed to write schema to file");
+                let schema_file = File::create(schema_file_path).expect("Failed to create schema file");
+                let mut writer = BufWriter::new(schema_file);
+
+                writeln!(writer, "version: 2\n\nmodels:").expect("Failed to write header");
+                writeln!(writer, "  - name: {}", model.name).expect("Failed to write model name");
+                writeln!(writer, "    columns:").expect("Failed to write columns");
+
+                let mut written_columns = HashSet::new();
+                
+                // Always include predefined columns first
+                for (column_name, column) in &model.columns {
+                    if written_columns.insert(column_name.clone()) {
+                        writeln!(
+                            writer,
+                            "      - name: {}\n        tests:\n          - not_null\n          - unique\n        tags: {:?}",
+                            column_name, column.tags
+                        ).expect("Failed to write column schema");
+                    }
+                }
+
+                // Then write additional columns extracted from compiled SQL, ensuring no duplicates
+                for column_name in column_names {
+                    if written_columns.insert(column_name.clone()) {
+                        writeln!(writer, "      - name: {}", column_name).expect("Failed to write additional column schema");
+                    }
+                }
+
+                writer.flush().expect("Failed to flush writer");
             }
         }
     });
