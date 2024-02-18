@@ -20,6 +20,10 @@ struct Model {
     name: String,
     resource_type: String,
     compiled_code: String,
+    database: String,
+    schema: String,
+    original_file_path: String,
+    alias: String,
 }
 
 // Struct to hold column names extracted from compiled SQL after running query that returns column names as the result. We need to push these into the vector to be able to serialize it to YAML.
@@ -84,6 +88,7 @@ fn main() -> io::Result<()> {
             node.ok()
         })
         .for_each(|node| {
+            // TODO: run a query and store the results in this struct
             if node.resource_type == "model" {
                 let column_names: ModelColumns = ModelColumns {
                     column_names: vec![
@@ -93,6 +98,10 @@ fn main() -> io::Result<()> {
                     ],
                 };
                 println!("Model Name: {}", node.name);
+                println!("Model database: {}", node.database);
+                println!("Model Schema: {}", node.schema);
+                println!("Model alias: {}", node.alias);
+                println!("Model original_file_path: {}", node.original_file_path);
                 println!("Columns: {:?}", column_names);
                 // println!("Compiled Code: {:?}", node.compiled_code); // Uncomment this line to see the compiled code, but it's too long to print for regular debugging
             }
