@@ -40,12 +40,26 @@ struct Manifest {
     nodes: HashMap<String, Value>,
 }
 
-// TODO: if the adapter_type field matches these values, we can run the query to get the column names and then it'll dynamically switch the database query runner that's supported
+// TODO: if the adapter_type field matches these values, we can run the query to get the column names and then it'll dynamically switch the database query runner that's supported#
+
+#[derive(Debug, PartialEq, Eq)]
 pub enum SupportedAdapters {
     BigQuery,
     Postgres,
     Snowflake,
     Duckdb,
+}
+
+impl SupportedAdapters {
+    fn from_str(adapter_type: &str) -> Option<Self> {
+        match adapter_type.to_lowercase().as_str() {
+            "bigquery" => Some(Self::BigQuery),
+            "postgres" => Some(Self::Postgres),
+            "snowflake" => Some(Self::Snowflake),
+            "duckdb" => Some(Self::Duckdb),
+            _ => None,
+        }
+    }
 }
 
 fn main() -> io::Result<()> {
@@ -55,10 +69,11 @@ fn main() -> io::Result<()> {
     let manifest: Manifest = serde_json::from_reader(reader).unwrap();
 
     let model_prefix = Regex::new(r"^model\.").unwrap();
-
-    if manifest.metadata.adapter_type == "duckdb".to_string() {
-        println!("Adapter type is DuckDB");
-    };
+    if let Some(adapter_type_enum) = SupportedAdapters::from_str(&manifest.metadata.adapter_type) {
+        println!("Adapter Type: {:?}", adapter_type_enum);
+    } else {
+        println!("Unsupported adapter type");
+    }
 
     manifest.nodes.par_iter().for_each(|(key, value)| {
         if model_prefix.is_match(key) {
