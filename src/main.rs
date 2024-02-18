@@ -1,5 +1,4 @@
 use rayon::prelude::*;
-use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value; // Add missing import statement
 
@@ -7,17 +6,19 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::{self, BufReader};
 
-#[derive(Debug, Serialize, Deserialize)]
-struct Column {
-    name: String,
-    #[serde(default)]
-    tags: Vec<String>,
-}
+// TODO: probably don't need this
+// #[derive(Debug, Serialize, Deserialize)]
+// struct Column {
+//     name: String,
+//     #[serde(default)]
+//     tags: Vec<String>,
+// }
 
 // having the `columns` field did NOT work because there are times where the `columns` field is not present in the JSON. So, we need to define that later
 #[derive(Debug, Serialize, Deserialize)]
 struct Model {
     name: String,
+    resource_type: String,
     compiled_code: String,
 }
 
@@ -68,17 +69,21 @@ fn main() -> io::Result<()> {
     let reader = BufReader::new(file);
     let manifest: Manifest = serde_json::from_reader(reader).unwrap();
 
-    let model_prefix = Regex::new(r"^model\.").unwrap();
     if let Some(adapter_type_enum) = SupportedAdapters::from_str(&manifest.metadata.adapter_type) {
         println!("Adapter Type: {:?}", adapter_type_enum);
     } else {
         println!("Unsupported adapter type");
     }
 
-    manifest.nodes.par_iter().for_each(|(key, value)| {
-        if model_prefix.is_match(key) {
-            if let Ok(model) = serde_json::from_value::<Model>(value.clone()) {
-                // TODO: Add code to run the query and get the column names
+    manifest
+        .nodes
+        .par_iter()
+        .filter_map(|(_, value)| {
+            let node: Result<Model, _> = serde_json::from_value(value.clone());
+            node.ok()
+        })
+        .for_each(|node| {
+            if node.resource_type == "model" {
                 let column_names: ModelColumns = ModelColumns {
                     column_names: vec![
                         "column1".to_string(),
@@ -86,18 +91,11 @@ fn main() -> io::Result<()> {
                         "column3".to_string(),
                     ],
                 };
-                let model_info: Model = Model {
-                    name: model.name,
-                    compiled_code: model.compiled_code,
-                };
-                println!("Model Name: {}", model_info.name);
-                // println!("Compiled Code: {}", model_info.compiled_code);
+                println!("Model Name: {}", node.name);
                 println!("Columns: {:?}", column_names);
-            } else if let Err(e) = serde_json::from_value::<Model>(value.clone()) {
-                println!("Failed to deserialize value into Model, error: {:?}", e);
+                // println!("Compiled Code: {:?}", node.compiled_code); // Uncomment this line to see the compiled code, but it's too long to print for regular debugging
             }
-        }
-    });
+        });
 
     Ok(())
 }
