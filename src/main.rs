@@ -14,10 +14,10 @@ struct Column {
     tags: Vec<String>,
 }
 
+// having the `columns` field did NOT work because there are times where the `columns` field is not present in the JSON. So, we need to define that later
 #[derive(Debug, Serialize, Deserialize)]
 struct Model {
     name: String,
-    columns: ModelColumns,
     compiled_code: String,
 }
 
@@ -59,13 +59,11 @@ fn main() -> io::Result<()> {
                 };
                 let model_info: Model = Model {
                     name: model.name,
-                    columns: column_names,
                     compiled_code: model.compiled_code,
                 };
-                println!("Model: {}", model_info.name);
-                for column in &model_info.columns.column_names {
-                    println!("column_name: {}", column);
-                }
+                println!("Model Name: {}", model_info.name);
+                println!("Compiled Code: {}", model_info.compiled_code);
+                println!("Columns: {:?}", column_names);
             } else if let Err(e) = serde_json::from_value::<Model>(value.clone()) {
                 println!("Failed to deserialize value into Model, error: {:?}", e);
             }
