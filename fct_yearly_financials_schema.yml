@@ -8,3 +8,5 @@ models:
           - not_null
           - unique
         tags: ["primary-key"]
+      - name: yearly_revenue
+      - name: yearly_subscribers

@@ -8,5 +8,3 @@ models:
           - not_null
           - unique
         tags: ["primary-key"]
-      - name: cnt_subscribers
-      - name: sum_revenue

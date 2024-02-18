@@ -8,7 +8,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs::{self, File};
 use std::io::{self, BufReader, BufWriter, Write};
 use std::path::Path;
-use sqlparser::ast::{Expr, SelectItem, SetExpr, Statement};
+use sqlparser::ast::{Expr, Select, SelectItem, SetExpr, Statement};
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Column {
@@ -31,38 +31,44 @@ struct Manifest {
 
 fn extract_column_names(sql: &str) -> Vec<String> {
     let dialect = GenericDialect {};
-    let mut column_names = Vec::new();
+    let mut column_names = HashSet::new();
 
     match Parser::parse_sql(&dialect, sql) {
         Ok(parsed_sql) => {
             for statement in parsed_sql {
-                if let Statement::Query(query) = statement {
-                    if let Some(with) = &query.with {
-                        for cte in &with.cte_tables {
-                            if let SetExpr::Select(select) = &*cte.query.body {
-                                for item in &select.projection {
-                                    match item {
-                                        SelectItem::UnnamedExpr(expr) => {
-                                            if let Expr::Identifier(ident) = expr {
-                                                column_names.push(ident.value.clone());
-                                            }
-                                        },
-                                        SelectItem::ExprWithAlias { alias, .. } => {
-                                            column_names.push(alias.value.clone());
-                                        },
-                                        _ => {}
-                                    }
-                                }
-                            }
+                match statement {
+                    Statement::Query(query) => {
+                        let set_expr = &query.body;
+                        match &**set_expr {
+                            SetExpr::Select(select) => extract_names_from_select(&select, &mut column_names),
+                            _ => {}
                         }
-                    }
+                    },
+                    _ => {}
                 }
             }
         }
         Err(e) => eprintln!("Failed to parse SQL: {}", e),
     }
 
-    column_names
+    column_names.into_iter().collect()
+}
+
+// Helper function to extract column names from a Select statement
+fn extract_names_from_select(select: &Select, column_names: &mut HashSet<String>) {
+    for item in &select.projection {
+        match item {
+            SelectItem::UnnamedExpr(expr) => {
+                if let Expr::Identifier(ident) = expr {
+                    column_names.insert(ident.value.clone());
+                }
+            },
+            SelectItem::ExprWithAlias { alias, .. } => {
+                column_names.insert(alias.value.clone());
+            },
+            _ => {}
+        }
+    }
 }
 
 fn main() -> io::Result<()> {
@@ -93,6 +99,7 @@ fn main() -> io::Result<()> {
 
                 let mut written_columns = HashSet::new();
                 
+                // Always include predefined columns first
                 for (column_name, column) in &model.columns {
                     if written_columns.insert(column_name.clone()) {
                         writeln!(
@@ -103,6 +110,7 @@ fn main() -> io::Result<()> {
                     }
                 }
 
+                // Then write additional columns extracted from compiled SQL, ensuring no duplicates
                 for column_name in column_names {
                     if written_columns.insert(column_name.clone()) {
                         writeln!(writer, "      - name: {}", column_name).expect("Failed to write additional column schema");
