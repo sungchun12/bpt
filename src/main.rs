@@ -47,8 +47,6 @@ fn main() -> io::Result<()> {
 
     let model_prefix = Regex::new(r"^model\.").unwrap();
 
-    let model_prefix = Regex::new(r"^model\.").unwrap();
-
     manifest.nodes.par_iter().for_each(|(key, value)| {
         if model_prefix.is_match(key) {
             if let Ok(model) = serde_json::from_value::<Model>(value.clone()) {
@@ -59,8 +57,17 @@ fn main() -> io::Result<()> {
                         "column3".to_string(),
                     ],
                 };
-                println!("Model: {:?}", model);
-                println!("column_names: {:?}", column_names);
+                let model_info: Model = Model {
+                    name: model.name,
+                    columns: column_names,
+                    compiled_code: model.compiled_code,
+                };
+                println!("Model: {}", model_info.name);
+                for column in &model_info.columns.column_names {
+                    println!("column_name: {}", column);
+                }
+            } else if let Err(e) = serde_json::from_value::<Model>(value.clone()) {
+                println!("Failed to deserialize value into Model, error: {:?}", e);
             }
         }
     });
