@@ -9,7 +9,7 @@ models:
           - unique
         tags: ["primary-key"]
       - name: sub_plan
-      - name: sub_created_at
       - name: created_at
-      - name: sub_price
       - name: num_users
+      - name: sub_created_at
+      - name: sub_price
