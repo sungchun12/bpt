@@ -35,6 +35,7 @@ struct Metadata {
     adapter_type: String,
 }
 
+// TODO: implement a method on nodes to only read in nodes with resource_type = "model"
 #[derive(Debug, Serialize, Deserialize)]
 struct Manifest {
     metadata: Metadata,
