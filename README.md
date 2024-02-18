@@ -11,3 +11,5 @@ blueprint: write and update schemas for your dbt models, less time doing toil ==
 3. Run the queries concurrenctly to get the schema for each model from the database. This assumes the table/view already exists in the database. 
 4. For each model, write the schema to a file in the `schemas/` directory with the name of the node and the schema as the contents. Ex: `dim_orgs_schema.yml`
 
+
+Alright, Sung, now you get that you can't one shot this code with chatgpt. You're going to have to do it hard way (read: right way) and build it up piece by piece. 
