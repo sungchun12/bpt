@@ -28,10 +28,19 @@ struct ModelColumns {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+struct Metadata {
+    dbt_version: String,
+    generated_at: String,
+    adapter_type: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 struct Manifest {
+    metadata: Metadata,
     nodes: HashMap<String, Value>,
 }
 
+// TODO: if the adapter_type field matches these values, we can run the query to get the column names and then it'll dynamically switch the database query runner that's supported
 pub enum SupportedAdapters {
     BigQuery,
     Postgres,
@@ -47,9 +56,14 @@ fn main() -> io::Result<()> {
 
     let model_prefix = Regex::new(r"^model\.").unwrap();
 
+    if manifest.metadata.adapter_type == "duckdb".to_string() {
+        println!("Adapter type is DuckDB");
+    };
+
     manifest.nodes.par_iter().for_each(|(key, value)| {
         if model_prefix.is_match(key) {
             if let Ok(model) = serde_json::from_value::<Model>(value.clone()) {
+                // TODO: Add code to run the query and get the column names
                 let column_names: ModelColumns = ModelColumns {
                     column_names: vec![
                         "column1".to_string(),
@@ -62,7 +76,7 @@ fn main() -> io::Result<()> {
                     compiled_code: model.compiled_code,
                 };
                 println!("Model Name: {}", model_info.name);
-                println!("Compiled Code: {}", model_info.compiled_code);
+                // println!("Compiled Code: {}", model_info.compiled_code);
                 println!("Columns: {:?}", column_names);
             } else if let Err(e) = serde_json::from_value::<Model>(value.clone()) {
                 println!("Failed to deserialize value into Model, error: {:?}", e);
