@@ -13,3 +13,5 @@ blueprint: write and update schemas for your dbt models, less time doing toil ==
 
 
 Alright, Sung, now you get that you can't one shot this code with chatgpt. You're going to have to do it hard way (read: right way) and build it up piece by piece. 
+
+Remember, this is less "look how cool my rust code is" and more "look how fast I can solve this problem for you". 

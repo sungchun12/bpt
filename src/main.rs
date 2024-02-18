@@ -27,6 +27,11 @@ struct Manifest {
     nodes: HashMap<String, Value>,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+struct Schema {
+    nodes: HashMap<String, Column>,
+}
+
 fn main() -> DuckResult<()> {
     let matches = App::new("DBT Schema Extractor")
         .version("1.0")
