@@ -3,10 +3,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value; // Add missing import statement
 
 // use duckdb::prelude::*;
-// use duckdb::Connection;
+use duckdb::{Connection, Result};
 // use duckdb::{params::NullIs, Config, Connection, Result}; // Add missing import statements // Add missing import statement
 
 use std::collections::HashMap;
+use std::error::Error;
 use std::fs::File;
 use std::io::{self, BufReader};
 
@@ -93,6 +94,61 @@ impl SupportedAdapters {
     }
 }
 
+trait QueryRunner {
+    fn fetch_column_metadata(
+        &self,
+        model: &Model,
+    ) -> Result<AllColumnMetadata, Box<dyn std::error::Error>>;
+}
+
+struct DuckDBQueryRunner {
+    connection: Connection,
+}
+
+impl DuckDBQueryRunner {
+    pub fn new(database_path: &str) -> Result<Self, Box<dyn Error>> {
+        // Corrected: Directly using `Connection::open` from the duckdb crate
+        let connection = Connection::open(database_path)?;
+
+        Ok(Self { connection })
+    }
+}
+
+impl QueryRunner for DuckDBQueryRunner {
+    fn fetch_column_metadata(
+        &self,
+        model: &Model,
+    ) -> Result<AllColumnMetadata, Box<dyn std::error::Error>> {
+        let sql = format!(
+            "SELECT column_name, data_type, character_maximum_length, numeric_precision, numeric_scale \
+             FROM system.information_schema.columns \
+             WHERE table_name = '{}' \
+             AND table_schema = '{}' \
+             AND table_catalog = '{}' \
+             ORDER BY ordinal_position;",
+            model.name,
+            model.schema,
+            model.database,
+        );
+        println!("SQL: {}", sql); // Uncomment this line to see the SQL query that's being run (for debugging purposes only
+
+        let mut stmt = self.connection.prepare(&sql)?;
+        let column_metadata_results = stmt.query_map([], |row| {
+            Ok(ColumnMetadata {
+                column_name: row.get(0)?,
+                data_type: row.get(1)?,
+                character_maximum_length: row.get(2)?,
+                numeric_precision: row.get(3)?,
+                numeric_scale: row.get(4)?,
+            })
+        })?;
+
+        let column_metadata: Vec<ColumnMetadata> =
+            column_metadata_results.collect::<Result<_, _>>()?;
+
+        Ok(AllColumnMetadata { column_metadata })
+    }
+}
 fn main() -> io::Result<()> {
     let file_path = "./jaffle_shop_duckdb/target/manifest.json";
     let file = File::open(file_path)?;
@@ -120,19 +176,22 @@ fn main() -> io::Result<()> {
             // The struct should be a hashmap with the key being the model name and the value being a hashmap of the column names and data types
 
             if node.resource_type == "model" {
-                let column_names: ModelColumns = ModelColumns {
-                    column_names: vec![
-                        "column1".to_string(),
-                        "column2".to_string(),
-                        "column3".to_string(),
-                    ],
+                let database_path = "./jaffle_shop_duckdb/target/jaffle_shop.duckdb";
+                let query_runner = DuckDBQueryRunner::new(database_path).unwrap();
+                let column_metadata = query_runner.fetch_column_metadata(&node).unwrap();
+                let column_metadata_result = ColumnMetadataResult {
+                    column_metadata: {
+                        let mut map = HashMap::new();
+                        map.insert(node.name.clone(), column_metadata);
+                        map
+                    },
                 };
+                println!("Column Metadata Result: {:?}", column_metadata_result);
                 println!("Model Name: {}", node.name);
                 println!("Model database: {}", node.database);
                 println!("Model Schema: {}", node.schema);
                 println!("Model alias: {}", node.alias);
                 println!("Model original_file_path: {}", node.original_file_path);
-                println!("Columns: {:?}", column_names);
                 // println!("Compiled Code: {:?}", node.compiled_code); // Uncomment this line to see the compiled code, but it's too long to print for regular debugging
             }
         });
