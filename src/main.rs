@@ -2,6 +2,10 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_json::Value; // Add missing import statement
 
+// use duckdb::prelude::*;
+// use duckdb::Connection;
+// use duckdb::{params::NullIs, Config, Connection, Result}; // Add missing import statements // Add missing import statement
+
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{self, BufReader};
@@ -27,9 +31,30 @@ struct Model {
 }
 
 // Struct to hold column names extracted from compiled SQL after running query that returns column names as the result. We need to push these into the vector to be able to serialize it to YAML.
+// TODO: I think we can remove this struct and just use a vector of strings
 #[derive(Debug, Serialize, Deserialize)]
 struct ModelColumns {
     column_names: Vec<String>,
+}
+
+// this will store the values from the query result that returns the column names and data types
+#[derive(Debug, Serialize, Deserialize)]
+struct ColumnMetadata {
+    column_name: String,
+    data_type: String,
+    character_maximum_length: Option<i32>,
+    numeric_precision: Option<i32>,
+    numeric_scale: Option<i32>,
+}
+#[derive(Debug, Serialize, Deserialize)]
+struct AllColumnMetadata {
+    column_metadata: Vec<ColumnMetadata>,
+}
+
+// this will store the results of the query that returns the column names and data types and will be serialized to YAML the key will be the model name and the value will be a hashmap of the column names and data types
+#[derive(Debug, Serialize, Deserialize)]
+struct ColumnMetadataResult {
+    column_metadata: HashMap<String, AllColumnMetadata>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -89,6 +114,11 @@ fn main() -> io::Result<()> {
         })
         .for_each(|node| {
             // TODO: run a query and store the results in this struct
+            // Run the compiled query to get the column names and data types. It should be an empty table result based on the compiled_code associated with this model and should work even if the table isn't officially materialized yet.
+            // verify the duckdb adapter is supported with the above logic
+            // if it is, then run the query and store the results in the struct
+            // The struct should be a hashmap with the key being the model name and the value being a hashmap of the column names and data types
+
             if node.resource_type == "model" {
                 let column_names: ModelColumns = ModelColumns {
                     column_names: vec![
