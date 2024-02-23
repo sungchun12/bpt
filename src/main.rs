@@ -146,9 +146,12 @@ impl QueryRunner for DuckDBQueryRunner {
         let column_metadata: Vec<ColumnMetadata> =
             column_metadata_results.collect::<Result<_, _>>()?;
 
+        println!("Query Results: {:?}", column_metadata); // Print query results for debugging
+
         Ok(AllColumnMetadata { column_metadata })
     }
 }
+
 fn main() -> io::Result<()> {
     let file_path = "./jaffle_shop_duckdb/target/manifest.json";
     let file = File::open(file_path)?;
@@ -176,7 +179,7 @@ fn main() -> io::Result<()> {
             // The struct should be a hashmap with the key being the model name and the value being a hashmap of the column names and data types
 
             if node.resource_type == "model" {
-                let database_path = "./jaffle_shop_duckdb/target/jaffle_shop.duckdb";
+                let database_path = "./jaffle_shop_duckdb/jaffle_shop.duckdb"; // TODO: error handling if it doesn't find a database file
                 let query_runner = DuckDBQueryRunner::new(database_path).unwrap();
                 let column_metadata = query_runner.fetch_column_metadata(&node).unwrap();
                 let column_metadata_result = ColumnMetadataResult {
