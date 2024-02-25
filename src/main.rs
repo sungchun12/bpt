@@ -1,6 +1,7 @@
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_json::Value; // Add missing import statement
+use serde_yaml::to_writer;
 
 // use duckdb::prelude::*;
 use duckdb::{Connection, Result};
@@ -152,6 +153,38 @@ impl QueryRunner for DuckDBQueryRunner {
     }
 }
 
+#[derive(Serialize)]
+struct Column {
+    name: String,
+    data_type: String,
+    description: String,
+    tests: Option<Vec<String>>,
+}
+
+#[derive(Serialize)]
+struct ModelYamlConfig {
+    name: String,
+    description: String,
+    config: Config,
+    columns: Vec<Column>,
+}
+
+#[derive(Serialize)]
+struct Config {
+    contract: Contract,
+}
+
+#[derive(Serialize)]
+struct Contract {
+    enforced: bool,
+}
+
+#[derive(Serialize)]
+struct Yaml {
+    version: u8,
+    models: Vec<ModelYamlConfig>,
+}
+
 fn main() -> io::Result<()> {
     let file_path = "./jaffle_shop_duckdb/target/manifest.json";
     let file = File::open(file_path)?;
@@ -201,15 +234,44 @@ fn main() -> io::Result<()> {
                 // The YAML file should be named the same as the original_file_path of the node, but with a _schema.yml extension. Example: `models/orders.sql` would be stored in this directory `models/orders_schema.yml` within the subdirectory of the first argument of this path: "./jaffle_shop_duckdb/target/manifest.json" which is "./jaffle_shop_duckdb/" . This is the actual files name: orders_schema.yml
                 // The structuring of the YAML file should be like this: in the schema_template.yml file
 
-                let yaml = serde_yaml::to_string(&column_metadata_result).unwrap();
-                println!("YAML: {}", yaml);
-                let file_path = format!(
-                    "./jaffle_shop_duckdb/{}_schema.yml",
-                    node.original_file_path.trim_end_matches(".sql")
-                );
-                let file = File::create(file_path).unwrap(); // Unwrap the File from the Result
-                serde_yaml::to_writer(&file, &column_metadata_result).unwrap(); // Pass the unwrapped File to serde_yaml::to_writer
-                println!("YAML: {}", yaml);
+                // Loop over all models
+                for (model_name, model_data) in &column_metadata_result.column_metadata {
+                    let columns = model_data
+                        .column_metadata
+                        .iter()
+                        .map(|metadata| Column {
+                            name: metadata.column_name.clone(),
+                            data_type: metadata.data_type.clone(),
+                            description: "TODO".to_string(),
+                            tests: if metadata.column_name == "id" {
+                                Some(vec!["unique".to_string(), "not_null".to_string()])
+                            } else {
+                                None
+                            },
+                        })
+                        .collect::<Vec<_>>();
+
+                    let yaml_data = Yaml {
+                        version: 2,
+                        models: vec![ModelYamlConfig {
+                            name: model_name.clone(),
+                            description: "TODO".to_string(),
+                            config: Config {
+                                contract: Contract { enforced: true },
+                            },
+                            columns,
+                        }],
+                    };
+
+                    let yaml = serde_yaml::to_string(&yaml_data).unwrap();
+                    println!("YAML: {}", yaml);
+                    let file_path = format!(
+                        "./jaffle_shop_duckdb/{}_schema.yml",
+                        node.original_file_path.trim_end_matches(".sql")
+                    );
+                    let file = File::create(file_path).unwrap();
+                    to_writer(&file, &yaml_data).unwrap();
+                }
             }
         });
 
