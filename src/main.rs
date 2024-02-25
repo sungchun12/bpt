@@ -196,6 +196,20 @@ fn main() -> io::Result<()> {
                 println!("Model alias: {}", node.alias);
                 println!("Model original_file_path: {}", node.original_file_path);
                 // println!("Compiled Code: {:?}", node.compiled_code); // Uncomment this line to see the compiled code, but it's too long to print for regular debugging
+
+                // TODO: take the column_metadata_result and serialize it to YAML based on the original_file_path of the node
+                // The YAML file should be named the same as the original_file_path of the node, but with a _schema.yml extension. Example: `models/orders.sql` would be stored in this directory `models/orders_schema.yml` within the subdirectory of the first argument of this path: "./jaffle_shop_duckdb/target/manifest.json" which is "./jaffle_shop_duckdb/" . This is the actual files name: orders_schema.yml
+                // The structuring of the YAML file should be like this: in the schema_template.yml file
+
+                let yaml = serde_yaml::to_string(&column_metadata_result).unwrap();
+                println!("YAML: {}", yaml);
+                let file_path = format!(
+                    "./jaffle_shop_duckdb/{}_schema.yml",
+                    node.original_file_path.trim_end_matches(".sql")
+                );
+                let file = File::create(file_path).unwrap(); // Unwrap the File from the Result
+                serde_yaml::to_writer(&file, &column_metadata_result).unwrap(); // Pass the unwrapped File to serde_yaml::to_writer
+                println!("YAML: {}", yaml);
             }
         });
 
