@@ -1,0 +1,39 @@
+version: 2
+
+models:
+  - name: customers
+    description: TODO
+    config:
+      contract:
+        enforced: true
+    columns:
+      - name: customer_id
+        data_type: INTEGER
+        description: TODO
+        tests:
+          - unique
+          - not_null
+
+      - name: first_name
+        data_type: VARCHAR
+        description: TODO
+
+      - name: last_name
+        data_type: VARCHAR
+        description: TODO
+
+      - name: first_order
+        data_type: DATE
+        description: TODO
+
+      - name: most_recent_order
+        data_type: DATE
+        description: TODO
+
+      - name: number_of_orders
+        data_type: BIGINT
+        description: TODO
+
+      - name: customer_lifetime_value
+        data_type: DOUBLE
+        description: TODO

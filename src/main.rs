@@ -1,4 +1,7 @@
 use rayon::prelude::*;
+// use serde::ser::Serialize;
+use serde::ser::SerializeStruct;
+use serde::ser::Serializer;
 use serde::{Deserialize, Serialize};
 use serde_json::Value; // Add missing import statement
 use serde_yaml::to_writer;
@@ -153,12 +156,33 @@ impl QueryRunner for DuckDBQueryRunner {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Default)]
 struct Column {
     name: String,
     data_type: String,
     description: String,
     tests: Option<Vec<String>>,
+}
+
+impl Serialize for Column {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut s = serializer.serialize_struct("Column", 3)?;
+        s.serialize_field("name", &self.name)?;
+        s.serialize_field("data_type", &self.data_type)?;
+        s.serialize_field("description", &self.description)?;
+
+        // Skip tests field if it is None or empty
+        if let Some(tests) = &self.tests {
+            if !tests.is_empty() {
+                s.serialize_field("tests", tests)?;
+            }
+        }
+
+        s.end()
+    }
 }
 
 #[derive(Serialize)]
@@ -222,12 +246,12 @@ fn main() -> io::Result<()> {
                         map
                     },
                 };
-                println!("Column Metadata Result: {:?}", column_metadata_result);
-                println!("Model Name: {}", node.name);
-                println!("Model database: {}", node.database);
-                println!("Model Schema: {}", node.schema);
-                println!("Model alias: {}", node.alias);
-                println!("Model original_file_path: {}", node.original_file_path);
+                // println!("Column Metadata Result: {:?}", column_metadata_result);
+                // println!("Model Name: {}", node.name);
+                // println!("Model database: {}", node.database);
+                // println!("Model Schema: {}", node.schema);
+                // println!("Model alias: {}", node.alias);
+                // println!("Model original_file_path: {}", node.original_file_path);
                 // println!("Compiled Code: {:?}", node.compiled_code); // Uncomment this line to see the compiled code, but it's too long to print for regular debugging
 
                 // TODO: take the column_metadata_result and serialize it to YAML based on the original_file_path of the node
@@ -239,15 +263,18 @@ fn main() -> io::Result<()> {
                     let columns = model_data
                         .column_metadata
                         .iter()
-                        .map(|metadata| Column {
-                            name: metadata.column_name.clone(),
-                            data_type: metadata.data_type.clone(),
-                            description: "TODO".to_string(),
-                            tests: if metadata.column_name.to_lowercase().contains("_id") {
-                                Some(vec!["unique".to_string(), "not_null".to_string()])
-                            } else {
-                                None
-                            },
+                        .map(|metadata| {
+                            let mut column = Column {
+                                name: metadata.column_name.clone(),
+                                data_type: metadata.data_type.clone(),
+                                description: "TODO".to_string(),
+                                ..Default::default()
+                            };
+                            if metadata.column_name.to_lowercase().contains("_id") {
+                                column.tests =
+                                    Some(vec!["unique".to_string(), "not_null".to_string()])
+                            }
+                            column
                         })
                         .collect::<Vec<_>>();
 
