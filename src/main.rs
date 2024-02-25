@@ -243,7 +243,7 @@ fn main() -> io::Result<()> {
                             name: metadata.column_name.clone(),
                             data_type: metadata.data_type.clone(),
                             description: "TODO".to_string(),
-                            tests: if metadata.column_name == "id" {
+                            tests: if metadata.column_name.to_lowercase().contains("_id") {
                                 Some(vec!["unique".to_string(), "not_null".to_string()])
                             } else {
                                 None
