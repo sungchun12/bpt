@@ -260,6 +260,7 @@ fn main() -> io::Result<()> {
 
                 // Loop over all models
                 for (model_name, model_data) in &column_metadata_result.column_metadata {
+                    let mut first_id = true; // flag to track first "_id" column
                     let columns = model_data
                         .column_metadata
                         .iter()
@@ -270,11 +271,12 @@ fn main() -> io::Result<()> {
                                 description: "TODO".to_string(),
                                 ..Default::default()
                             };
-                            if metadata.column_name.to_lowercase().contains("_id") {
+                            if metadata.column_name.to_lowercase().ends_with("_id") && first_id {
                                 column.tests =
-                                    Some(vec!["unique".to_string(), "not_null".to_string()])
+                                    Some(vec!["unique".to_string(), "not_null".to_string()]);
+                                first_id = false; // Update the flag after first "_id" column
                             }
-                            column
+                            column // return the column anyway
                         })
                         .collect::<Vec<_>>();
 
